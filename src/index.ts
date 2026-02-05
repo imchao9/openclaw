@@ -43,7 +43,15 @@ enableConsoleCapture();
 // Enforce the minimum supported runtime before doing any work.
 assertSupportedRuntime();
 
+import { ProxyAgent, setGlobalDispatcher } from "undici";
 import { buildProgram } from "./cli/program.js";
+
+// Support HTTP_PROXY and HTTPS_PROXY environment variables
+const proxy = process.env.HTTPS_PROXY || process.env.HTTP_PROXY;
+
+if (proxy) {
+  setGlobalDispatcher(new ProxyAgent(proxy));
+}
 
 const program = buildProgram();
 

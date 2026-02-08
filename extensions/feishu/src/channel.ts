@@ -36,6 +36,8 @@ const meta = {
 };
 
 const normalizeAllowEntry = (entry: string) => entry.replace(/^(feishu|lark):/i, "").trim();
+const isWsConnect400 = (lastError?: string | null) =>
+  typeof lastError === "string" && /status code 400/i.test(lastError);
 
 export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
   id: "feishu",
@@ -185,6 +187,15 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
             accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
             kind: "config",
             message: "Feishu app ID/secret not configured",
+          });
+        }
+        if (isWsConnect400(account.lastError)) {
+          issues.push({
+            channel: "feishu",
+            accountId: account.accountId ?? DEFAULT_ACCOUNT_ID,
+            kind: "runtime",
+            message: "Feishu WebSocket connect failed (HTTP 400)",
+            fix: 'Enable "Use long connection to receive events/callbacks", verify appId/appSecret + domain (feishu/lark), then restart the gateway.',
           });
         }
       }

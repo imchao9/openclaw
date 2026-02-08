@@ -42,6 +42,20 @@ const registryCache = new Map<string, PluginRegistry>();
 
 const defaultLogger = () => createSubsystemLogger("plugins");
 
+type LegacyBundledReplacement = {
+  pluginId: string;
+  legacyPackageName: string;
+  bundledPackageName: string;
+};
+
+const LEGACY_BUNDLED_REPLACEMENTS: LegacyBundledReplacement[] = [
+  {
+    pluginId: "feishu",
+    legacyPackageName: "@m1heng-clawd/feishu",
+    bundledPackageName: "@openclaw/feishu",
+  },
+];
+
 const resolvePluginSdkAlias = (): string | null => {
   try {
     const modulePath = fileURLToPath(import.meta.url);
@@ -166,6 +180,62 @@ function pushDiagnostics(diagnostics: PluginDiagnostic[], append: PluginDiagnost
   diagnostics.push(...append);
 }
 
+function normalizePackageName(value?: string): string | undefined {
+  const trimmed = value?.trim().toLowerCase();
+  return trimmed || undefined;
+}
+
+function applyLegacyBundledReplacements(discovery: ReturnType<typeof discoverOpenClawPlugins>) {
+  const diagnostics: PluginDiagnostic[] = [...discovery.diagnostics];
+  let candidates = discovery.candidates;
+
+  for (const replacement of LEGACY_BUNDLED_REPLACEMENTS) {
+    const bundledPackageName = normalizePackageName(replacement.bundledPackageName);
+    const bundledAvailable = candidates.some((candidate) => {
+      if (candidate.origin !== "bundled") {
+        return false;
+      }
+      const candidatePackageName = normalizePackageName(candidate.packageName);
+      return (
+        candidate.idHint === replacement.pluginId ||
+        (bundledPackageName && candidatePackageName === bundledPackageName)
+      );
+    });
+    if (!bundledAvailable) {
+      continue;
+    }
+
+    const legacyPackageName = normalizePackageName(replacement.legacyPackageName);
+    const nextCandidates: typeof candidates = [];
+    let removed = false;
+
+    for (const candidate of candidates) {
+      const candidatePackageName = normalizePackageName(candidate.packageName);
+      if (
+        candidate.origin === "global" &&
+        legacyPackageName &&
+        candidatePackageName === legacyPackageName
+      ) {
+        removed = true;
+        diagnostics.push({
+          level: "warn",
+          pluginId: replacement.pluginId,
+          source: candidate.source,
+          message: `legacy plugin "${replacement.legacyPackageName}" is replaced by bundled "${replacement.bundledPackageName}"; ignoring global install at ${candidate.rootDir}`,
+        });
+        continue;
+      }
+      nextCandidates.push(candidate);
+    }
+
+    if (removed) {
+      candidates = nextCandidates;
+    }
+  }
+
+  return { candidates, diagnostics };
+}
+
 export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegistry {
   const cfg = options.config ?? {};
   const logger = options.logger ?? defaultLogger();
@@ -194,10 +264,11 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     coreGatewayHandlers: options.coreGatewayHandlers as Record<string, GatewayRequestHandler>,
   });
 
-  const discovery = discoverOpenClawPlugins({
+  const discovered = discoverOpenClawPlugins({
     workspaceDir: options.workspaceDir,
     extraPaths: normalized.loadPaths,
   });
+  const discovery = applyLegacyBundledReplacements(discovered);
   const manifestRegistry = loadPluginManifestRegistry({
     config: cfg,
     workspaceDir: options.workspaceDir,

@@ -9,6 +9,7 @@ type TempPlugin = { dir: string; file: string; id: string };
 
 const tempDirs: string[] = [];
 const prevBundledDir = process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
+const prevStateDir = process.env.OPENCLAW_STATE_DIR;
 const EMPTY_PLUGIN_SCHEMA = { type: "object", additionalProperties: false, properties: {} };
 
 function makeTempDir() {
@@ -55,6 +56,11 @@ afterEach(() => {
     delete process.env.OPENCLAW_BUNDLED_PLUGINS_DIR;
   } else {
     process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = prevBundledDir;
+  }
+  if (prevStateDir === undefined) {
+    delete process.env.OPENCLAW_STATE_DIR;
+  } else {
+    process.env.OPENCLAW_STATE_DIR = prevStateDir;
   }
 });
 
@@ -479,5 +485,67 @@ describe("loadOpenClawPlugins", () => {
     const overridden = entries.find((entry) => entry.status === "disabled");
     expect(loaded?.origin).toBe("config");
     expect(overridden?.origin).toBe("bundled");
+  });
+
+  it("prefers bundled feishu over legacy global @m1heng-clawd/feishu", () => {
+    const stateDir = makeTempDir();
+    process.env.OPENCLAW_STATE_DIR = stateDir;
+
+    const globalPluginDir = path.join(stateDir, "extensions", "legacy-feishu");
+    fs.mkdirSync(globalPluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(globalPluginDir, "package.json"),
+      JSON.stringify({
+        name: "@m1heng-clawd/feishu",
+        version: "0.1.7",
+        openclaw: { extensions: ["./index.js"] },
+      }),
+      "utf-8",
+    );
+    writePlugin({
+      id: "feishu",
+      body: `export default { id: "feishu", register() {} };`,
+      dir: globalPluginDir,
+      filename: "index.js",
+    });
+
+    const bundledDir = makeTempDir();
+    const bundledPluginDir = path.join(bundledDir, "feishu");
+    fs.mkdirSync(bundledPluginDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(bundledPluginDir, "package.json"),
+      JSON.stringify({
+        name: "@openclaw/feishu",
+        version: "2026.2.4",
+        openclaw: { extensions: ["./index.ts"] },
+      }),
+      "utf-8",
+    );
+    writePlugin({
+      id: "feishu",
+      body: `export default { id: "feishu", register() {} };`,
+      dir: bundledPluginDir,
+      filename: "index.ts",
+    });
+    process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = bundledDir;
+
+    const registry = loadOpenClawPlugins({
+      cache: false,
+      config: {
+        plugins: {
+          entries: {
+            feishu: { enabled: true },
+          },
+        },
+      },
+    });
+
+    const feishuEntries = registry.plugins.filter((entry) => entry.id === "feishu");
+    expect(feishuEntries).toHaveLength(1);
+    expect(feishuEntries[0]?.status).toBe("loaded");
+    expect(feishuEntries[0]?.origin).toBe("bundled");
+    expect(registry.diagnostics.some((diag) => diag.message.includes("@m1heng-clawd/feishu"))).toBe(
+      true,
+    );
   });
 });

@@ -277,7 +277,7 @@ async function installPluginFromPackageDir(params: {
   const deps = manifest.dependencies ?? {};
   const hasDeps = Object.keys(deps).length > 0;
   if (hasDeps) {
-    logger.info?.("Installing plugin dependencies…");
+    logger.info?.("Installing plugin dependencies… (this can take a few minutes)");
     const npmRes = await runCommandWithTimeout(
       ["npm", "install", "--omit=dev", "--silent", "--ignore-scripts"],
       {

@@ -1,4 +1,9 @@
-import type { ChannelMeta, ChannelPlugin, ClawdbotConfig } from "openclaw/plugin-sdk";
+import type {
+  ChannelMeta,
+  ChannelPlugin,
+  ChannelStatusIssue,
+  ClawdbotConfig,
+} from "openclaw/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID, PAIRING_APPROVED_MESSAGE } from "openclaw/plugin-sdk";
 import type { ResolvedFeishuAccount, FeishuConfig } from "./types.js";
 import {
@@ -38,7 +43,7 @@ export const feishuPlugin: ChannelPlugin<ResolvedFeishuAccount> = {
   },
   pairing: {
     idLabel: "feishuUserId",
-    normalizeAllowEntry: (entry) => entry.replace(/^(feishu|lark|user|open_id):/i, ""),
+    normalizeAllowEntry: (entry) => entry.replace(/^(feishu|lark|user|open_id):/i, "").trim(),
     notifyApproval: async ({ cfg, id }) => {
       await sendMessageFeishu({
         cfg,
